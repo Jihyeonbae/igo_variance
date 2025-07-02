@@ -1,0 +1,310 @@
+---
+title: "DSM and Heterogeneity modeling"
+author: "Jihyeon bae"
+date: "2024-01-29"
+output: html_document
+---
+
+
+# Introduction
+
+## Background and Goals
+
+- Constructing indicators to identify heterogeneity among an IGO's member states based on their regime types. 
+- Estimating the correlation between an IGO's political heterogeneity among members and its institutional design choice of Dispute Settlement Mechanism (DSM).
+
+
+# Setup and packages
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("pacman")
+p_load(plyr, dplyr, tidyr, ggplot2, tidyverse, RColorBrewer, readxl,
+       readr, haven, countrycode,
+       rqog, igoR, modelsummary, knitr, kableExtra, flextable, plm)
+
+```
+
+# Loading Raw data
+```{r, echo=FALSE, warning=FALSE}
+
+#Qualities of Government
+qog<-rqog::read_qog(which_data = "standard", data_type = "time-series") 
+
+qog<-qog%>%
+  filter(year>=1950 & year<2015) 
+
+#Correlates of War
+COW<-igoR::igo_year_format3 %>%
+  filter(year>=1950)
+```
+
+---
+
+# Country-level variables
+
+```{r, echo = FALSE}
+country <-qog %>%
+  dplyr::select(cname, year, ccodecow, 
+         # World Development Indicators
+          wdi_gdpcapcon2015, wdi_pop, wdi_trade, 
+         # judicial corruption decision
+          vdem_jucorrdc, 
+          ciri_assn, #freedom of association
+          ciri_injud, # independence of the judiciary
+        # Security variables
+          atop_number, 
+        # Democracy Indices 
+          vdem_polyarchy, vdem_libdem, vdem_partipdem,
+        # Democracy Indices (Alternatives for robustness check)
+          p_polity2, bmr_dem, ht_regtype1,
+        # Globalization Index (political)
+           kofgi_dr_pg=dr_pg,
+        # colonial legacy
+           ht_colonial,
+        # Political Terror Scale
+         pts_ptsa=gd_ptsa) %>%  
+  dplyr::mutate(wdi_log_gdpcapcon2015=log(wdi_gdpcapcon2015),
+         wdi_log_pop=log(wdi_pop),
+         wdi_log_trade=log(wdi_trade))%>%
+  dplyr::rename(ccode=ccodecow)%>%
+  dplyr::relocate(ccode, cname, year)
+
+country <- country %>%
+  mutate(ht_colonial=ifelse(ht_colonial>1, 1, 0),
+         ht_regtype1=case_when(ht_regtype1==9 ~ 5, 
+                            ht_regtype1==99 ~ 6,
+                            ht_regtype1==100 ~ 7,
+                            TRUE ~ ht_regtype1))
+
+```
+
+```{r, echo = FALSE}
+#Check rows that have NA values for VARIABLE_OF_INTEREST
+country[is.na(country$ccode),]
+
+#Fill in NAs
+country$ccode[country$cname == "Ethiopia"] <- 530
+country$ccode[country$cname == "Germany"] <- 255
+country$ccode[country$cname == "Yemen Democratic"] <- 680
+country$ccode[country$cname == "Yemen"] <- 679
+country$ccode[country$cname == "Sudan"] <- 625
+country$ccode[country$cname == "Cyprus"] <- 352
+country$ccode[country$cname == "Pakistan"] <- 770
+country$ccode[country$cname == "Vietnam, North"] <- 816
+country$ccode[country$cname == "Vietnam, South"] <- 817
+country$cname[country$cname == "USSR"] <- "Russian Federation (the)"
+
+
+#Run below code to check year-availability for VARIABLE_OF_INTEREST
+#summary(country[!is.na(country$VARIABLE_OF_INTEREST),])
+
+country<-country%>%
+  filter(!is.na(ccode))
+```
+
+---
+
+## Transposing IGO-level data into country-level data
+
+- Pivot longer so that row represents country
+```{r}
+COW <- COW %>%
+  dplyr::rename(cow_igocode = ionum)%>%
+  dplyr::select(-c(igocode, version, accuracyofpre1965membershipdates,sourcesandnotes, imputed)) %>%
+  dplyr::relocate(cow_igocode, ioname, year, political, social, economic)%>%
+  pivot_longer(c(`afghanistan`:`zimbabwe`),
+                      names_to="country",
+                      values_to="membership")%>%
+  dplyr::filter(membership==1) #member states only
+
+```
+
+## Identify ambiguous country names
+```{r}
+COW <- COW %>%
+  dplyr::mutate(country = dplyr::case_when(
+    country == "austriahungary" ~ "Austria-Hungary",
+    country == "domrepublic" ~ "Dominican Republic",
+    country == "etimor" ~ "East Timor",
+    country == "hessegrand" ~ "Hesse Grand Ducal",
+    country == "micronesiafs" ~ "Federated States of Micronesia",
+    country == "nokorea" ~ "North Korea",
+    country == "soafrica" ~ "South Africa",
+    country == "sokorea" ~ "South Korea",
+    country == "stlucia" ~ "St. Lucia",
+    country == "wgermany" ~ "German Federal Republic",
+    country == "syemen" ~ "Yemen People's Republic",
+    TRUE ~ country  
+    # keep original value for all other cases
+  ))
+
+#Attaching Country numeric code to character values
+COW$ccode<-countrycode(COW$country, 
+              origin='country.name', 
+              destination='cown', 
+              warn = TRUE)
+
+COW<-COW%>%
+  filter(!is.na(ccode))
+```
+
+```{r}
+# accession data
+join_events <- COW %>%
+  dplyr::group_by(ccode, ioname) %>%
+  dplyr::summarise(join_year = min(year, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::left_join(country %>% select(ccode, cname) %>% distinct(), by = "ccode")
+
+join_counts <- join_events %>%
+  dplyr::group_by(cname, join_year) %>%
+  dplyr::summarise(n_igos = n(), .groups = "drop")
+
+country_ts <- country %>%
+  select(ccode, cname, year, vdem_polyarchy)
+
+selected_countries <- c("United States", "Germany", "India", "Brazil", "China", "Korea (the Republic of)")
+
+country_ts_subset <- country_ts %>%
+  filter(cname %in% selected_countries)
+
+join_events <- join_events %>%
+  filter(cname %in% selected_countries)
+
+join_counts <- join_counts %>%
+  filter(cname %in% selected_countries)
+library(ggplot2)
+
+ggplot() +
+  # Democracy line
+  geom_line(
+    data = country_ts_subset,
+    aes(x = year, y = vdem_polyarchy),
+    color = "steelblue"
+  ) +
+  
+  # Points showing counts of IGOs joined
+  geom_point(
+    data = join_counts,
+    aes(
+      x = join_year,
+      y = 0,
+      size = n_igos
+    ),
+    color = "red",
+    alpha = 0.7
+  ) +
+  ylim(0,1) +
+  facet_wrap(~ cname, scales = "free_y") +
+  labs(
+    title = "Country Democracy Trajectories with IGO Accession Events",
+    subtitle = "Red points = Number of IGOs joined",
+    x = "Year",
+    y = "V-Dem Polyarchy Score",
+    size = "Number of IGOs joined"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(face = "bold")
+  )
+
+```
+
+## missing
+```{r}
+missing <- ggplot(country_ts, aes(x = year, y = cname, color = is.na(vdem_polyarchy))) +
+  geom_point(size = 1) +
+  scale_color_manual(
+    values = c("black", "red"),
+    labels = c("Present", "Missing"),
+    name = "Polyarchy"
+  ) +
+  labs(
+    title = "Missing V-Dem Polyarchy Scores by Country-Year",
+    x = "Year",
+    y = "Country"
+  ) +
+  theme_minimal(base_size = 8) +
+  theme(
+    axis.text.x = element_text(
+      angle = 90,
+      vjust = 0.5,
+      hjust = 1,
+      size = 5
+    ),
+    plot.margin = margin(10, 10, 20, 10)
+  ) +
+  coord_flip()
+
+
+
+ggsave("missing.png", missing, width = 30, height = 8, dpi = 500)
+
+```
+
+
+
+## Extracting member-state information for each IGO
+```{r}
+igo_master <- COW %>%
+  dplyr::inner_join(country, by=c("ccode", "year"))%>%
+  dplyr::select(-c(orgname, longorgname, membership))
+
+
+igo_master <- igo_master %>%
+  group_by(cow_igocode, year) %>%
+    mutate(gdp_share = 100*(wdi_gdpcapcon2015/sum(wdi_gdpcapcon2015, na.rm = TRUE)),
+    poly_share = 100*(vdem_polyarchy/sum(vdem_polyarchy, na.rm = TRUE)))
+
+```
+
+
+
+# Variable Generation
+## summarising state level info to igo level
+```{r}
+igo <- igo_master %>%
+  dplyr::group_by(cow_igocode, ioname, year) %>%
+  dplyr::summarise(
+    #average democracy scores
+    polyarchy = mean(vdem_polyarchy, na.rm = TRUE),
+    w.polyarchy = weighted.mean(vdem_polyarchy, w = wdi_log_gdpcapcon2015/sum(wdi_log_gdpcapcon2015), na.rm=TRUE),
+    polyarchy_median = median(vdem_polyarchy, na.rm = TRUE),
+    partipdem = mean(vdem_partipdem, na.rm=TRUE),
+    partipdem_median = median(vdem_partipdem, na.rm=TRUE),
+    libdem = mean(vdem_libdem, na.rm = TRUE),
+    libdem_median = median(vdem_libdem, na.rm = TRUE),
+    polity = mean(p_polity2, na.rm = TRUE),
+    #economic variables
+    gdp_cap = mean(wdi_log_gdpcapcon2015, na.rm = TRUE),
+    population=mean(wdi_log_pop, na.rm=TRUE),
+    trade=mean(wdi_log_trade, na.rm=TRUE),
+    alliances = mean(atop_number, na.rm = TRUE),
+    # Governance
+    ciri_injud=mean(ciri_injud, na.rm=TRUE),
+    #characteristics 
+    number = n(),
+    trade = mean(wdi_log_trade, na.rm = TRUE),
+    percentage = sum(bmr_dem, na.rm = TRUE) / number,
+    political = mean(political, na.rm = TRUE),
+    social = mean(social, na.rm = TRUE),
+    economic = mean(economic, na.rm = TRUE),
+    colonial= sum(ht_colonial, na.rm=TRUE) / number,
+    #asymmetry index
+    polity_sd = sd(p_polity2, na.rm = TRUE),
+    polyarchy_sd = sd(vdem_polyarchy, na.rm = TRUE),
+    libdem_sd=sd(vdem_libdem, na.rm=TRUE),
+    partipdem_sd=sd(vdem_partipdem, na.rm=TRUE),
+    econ_sd = sd(wdi_log_gdpcapcon2015, na.rm = TRUE),
+    # HH index
+    hh_poly = sum(abs(poly_share), na.rm = TRUE) - (1 / n()),
+    hh_gdp = sum(abs(gdp_share), na.rm = TRUE) - (1 / n()),
+    # Coefficient of variation
+    polity_cv = polity_sd / polity,
+    polyarchy_cv = polyarchy_sd / polyarchy,
+)
+
+  
+```
+

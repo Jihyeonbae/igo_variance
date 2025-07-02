@@ -1,0 +1,84 @@
+---
+title: "DSM and Heterogeneity modeling"
+author: "Jihyeon bae"
+date: "2024-01-29"
+output: html_document
+---
+
+
+# Introduction
+
+## Background and Goals
+
+- Constructing indicators to identify heterogeneity among an IGO's member states based on their regime types. 
+- Estimating the correlation between an IGO's political heterogeneity among members and its institutional design choice of Dispute Settlement Mechanism (DSM).
+
+
+# Setup and packages
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("pacman")
+p_load(plyr, dplyr, tidyr, ggplot2, tidyverse, RColorBrewer, readxl,
+       readr, haven, countrycode,
+       rqog, igoR, modelsummary, knitr, kableExtra, flextable, plm)
+
+```
+
+# Loading processed data
+```{r, echo=FALSE, warning=FALSE}
+igo_analysis<-readRDS("~/Desktop/Regime-Heterogeneity-and-DSM/data/processed/igo_analysis.RDS")
+igo_analysis<-igo_analysis%>%filter(year>=1970 & year <=2015)
+```
+
+
+# Data Analysis
+
+
+## Descriptive Visualization
+```{r warning=FALSE}
+
+library(ggplot2)
+library(dplyr)
+
+# Optional: reorder IGOs by median DSM for easier reading
+igo_analysis <- igo_analysis %>%
+  mutate(ioname = reorder(ioname, DSM, median, na.rm = TRUE))
+
+# Violin plot of DSM scores per IGO
+p_violin <- ggplot(igo_analysis, aes(x = ioname, y = DSM)) +
+  geom_violin(fill = "skyblue", alpha = 0.6, color = "gray30", scale = "width", trim = TRUE) +
+  geom_boxplot(width = 0.1, outlier.size = 0.5, alpha = 0.5) +
+  labs(
+    title = "Distribution of DSM Scores Across IGOs",
+    x = "IGO Name",
+    y = "DSM Score"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 60, hjust = 1, size = 8),
+    plot.title = element_text(face = "bold")
+  )
+
+# Save as PNG
+ggsave("plot_ioname_distribution.png", p_violin, width = 24, height = 8, dpi = 300)
+
+# OPTIONAL: also create a boxplot only (less visually dense)
+p_box <- ggplot(igo_analysis, aes(x = ioname, y = DSM)) +
+  geom_boxplot(fill = "lightblue", alpha = 0.7, outlier.size = 0.5) +
+  labs(
+    title = "Boxplot of DSM Scores per IGO",
+    x = "IGO Name",
+    y = "DSM Score"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 60, hjust = 1, size = 8),
+    plot.title = element_text(face = "bold")
+  )
+
+ggsave("plot_ioname_boxplot.png", p_box, width = 24, height = 8, dpi = 300)
+
+
+```
+
