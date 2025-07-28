@@ -1,0 +1,212 @@
+The goal of this script is to compare sample mean and theoretical mean when parameters of beta distribution change. 
+Assuming that an IGO is composed of member states whose democracy scores are assigned from beta distribution, this comparison should tell us about the significance of falsely relying on sample mean. 
+I hypothesize that the disparity between the two should be more salient *especially* when the data is skewed and when member states are few. 
+
+# inital code for four cases alone
+```{r}
+set.seed(2025)
+
+params <- list(
+  "alpha >1, beta >1" = c(alpha=5, beta=5),
+  "alpha <1, beta <1" = c(alpha=0.5, beta=0.5),
+  "alpha >1, beta <1" = c(alpha=2, beta=0.5),
+  "alpha <1, beta >1" = c(alpha=0.1, beta=5)
+)
+
+
+results <- lapply(names(params), function(name) {
+  a <- params[[name]]["alpha"]
+  b <- params[[name]]["beta"]
+  samp <- rbeta(50, shape1 = a, shape2 = b)
+  tibble(
+    case = name,
+    alpha = a,
+    beta = b,
+    theoretical_mean = a / (a + b),
+    sample_mean = mean(samp),
+    theoretical_variance = (a * b) / ((a + b)^2 * (a + b + 1)),
+    sample_variance = var(samp)
+  )
+})
+
+knitr::kable(dplyr::bind_rows(results), digits = 4)
+
+```
+
+
+
+
+I expand from the first two exercises. 
+
+1) General function that compares the two values depending on parameters as inputs. 
+```{r}
+simulate_beta <- function(alpha, beta, n) {
+  parameters <- rbeta(n=n, shape1 = alpha, shape2 = beta)
+  
+  tibble::tibble(
+    alpha = alpha,
+    beta = beta,
+    n = n,
+    theoretical_mean = alpha / (alpha + beta),
+    sample_mean = mean(parameters),
+    theoretical_variance = (alpha * beta) / (((alpha + beta)^2) * (alpha + beta + 1)),
+    sample_variance = var(parameters)
+  )
+}
+
+simulate_beta(alpha = 3, beta = 2, n = 100)
+
+  
+```
+With this function, I'm generating a list of two vetors.E(X) vs. theoretical mean.
+By simulating 1000 beta-distributed samples of size n=50 for a given a, b pair.
+
+# Case 1) a > 1, b>1 
+# should expect a unimodal distrubion
+```{r}
+reps = 1000
+sample_means <- numeric(reps)
+sample_vars <- numeric(reps)
+theoretical_means <- numeric(reps)
+theoretical_vars <- numeric(reps)
+
+
+for (i in 1:reps) {
+  result <- simulate_beta(alpha=5, beta=2, n=50)
+  sample_means[i] <- result$sample_mean
+  sample_vars[i] <- result$sample_variance
+  theoretical_means[i] <- result$theoretical_mean
+  theoretical_vars[i] <- result$theoretical_variance
+}
+
+sim1 <- tibble::tibble(
+  sample_mean = sample_means,
+  sample_variance = sample_vars,
+  theoretical_mean = theoretical_means,
+  theoretical_variance = theoretical_vars
+) 
+```
+
+# Case 2) a < 1, b < 1
+# convex bimodal 
+# a group of full autocracies & full democracies
+```{r}
+reps = 1000
+sample_means <- numeric(reps)
+sample_vars <- numeric(reps)
+theoretical_means <- numeric(reps)
+theoretical_vars <- numeric(reps)
+
+
+for (i in 1:reps) {
+  result <- simulate_beta(alpha=0.5, beta=0.5, n=50)
+  sample_means[i] <- result$sample_mean
+  sample_vars[i] <- result$sample_variance
+  theoretical_means[i] <- result$theoretical_mean
+  theoretical_vars[i] <- result$theoretical_variance
+}
+
+sim2 <- tibble::tibble(
+  sample_mean = sample_means,
+  sample_variance = sample_vars,
+  theoretical_mean = theoretical_means,
+  theoretical_variance = theoretical_vars
+) 
+```
+
+# case 3) a > 1, b < 1
+# group of democracies forming the majority
+```{r}
+reps = 1000
+sample_means <- numeric(reps)
+sample_vars <- numeric(reps)
+theoretical_means <- numeric(reps)
+theoretical_vars <- numeric(reps)
+
+
+for (i in 1:reps) {
+  result <- simulate_beta(alpha=5, beta=0.5, n=50)
+  sample_means[i] <- result$sample_mean
+  sample_vars[i] <- result$sample_variance
+  theoretical_means[i] <- result$theoretical_mean
+  theoretical_vars[i] <- result$theoretical_variance
+}
+
+sim3 <- tibble::tibble(
+  sample_mean = sample_means,
+  sample_variance = sample_vars,
+  theoretical_mean = theoretical_means,
+  theoretical_variance = theoretical_vars
+) 
+```
+
+
+# case 4) a < 1, b > 1
+# group of autocracies forming the majority (*AIGO*)
+
+```{r}
+reps = 1000
+sample_means <- numeric(reps)
+sample_vars <- numeric(reps)
+theoretical_means <- numeric(reps)
+theoretical_vars <- numeric(reps)
+
+
+for (i in 1:reps) {
+  result <- simulate_beta(alpha=0.5, beta=5, n=50)
+  sample_means[i] <- result$sample_mean
+  sample_vars[i] <- result$sample_variance
+  theoretical_means[i] <- result$theoretical_mean
+  theoretical_vars[i] <- result$theoretical_variance
+}
+
+sim4 <- tibble::tibble(
+  sample_mean = sample_means,
+  sample_variance = sample_vars,
+  theoretical_mean = theoretical_means,
+  theoretical_variance = theoretical_vars
+) 
+```
+
+
+2) Tracing the gap between theoretical and sample mean for one IGO over time. 
+```{r}
+library(fitdistrplus)
+# example with just one IGO 
+subset <- igo_master %>%
+  filter(ioname == "ASEAN") %>%
+  pull(v2x_polyarchy)
+
+subset <- subset[!is.na(subset)]
+
+years <- 1950:2014
+asean_results <- list()
+
+for (yr in years) {
+  subset <- igo_master %>%
+    filter(ioname == "ASEAN", year == yr, !is.na(v2x_polyarchy)) %>%
+    pull(v2x_polyarchy)
+  
+  if (length(subset) <= 1) next
+  
+  fit <- fitdist(subset, "beta", method = "mle")
+  
+  alpha <- fit$estimate["shape1"]
+  beta <- fit$estimate["shape2"]
+  
+  sim_result <- simulate_beta(alpha = alpha, beta = beta, n = length(subset)) 
+  # n varies over time. with new members. 
+  
+  sim_result$year <- yr
+  sim_result$actual_sample_mean <- mean(subset)
+  sim_result$actual_sample_variance <- var(subset)
+  sim_result$n_actual <- length(subset)
+  
+  asean_results[[as.character(yr)]] <- sim_result
+}
+
+asean_df <- bind_rows(asean_results) 
+#n_actual = observations without any NAs.
+
+```
+
