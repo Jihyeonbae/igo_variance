@@ -1,0 +1,70 @@
+%TC:ignore
+\immediate\write18{texcount -inc -sum -utf8 main.tex > wordcount.txt}
+%TC:endignore
+
+
+
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{newtxtext,newtxmath} % Better than \usepackage{times}
+\usepackage{hyperref}
+\usepackage{setspace}
+\doublespacing
+\usepackage{booktabs}
+\usepackage{threeparttable}
+\usepackage[table]{xcolor}
+\usepackage{graphicx}
+\usepackage{appendix}
+\usepackage{siunitx}
+\usepackage{tabularray}
+\usepackage{indentfirst}
+
+\sisetup{detect-all} % ensures consistency with font settings
+\usepackage[style=apa, backend=biber]{biblatex}
+\addbibresource{variance.bib}
+
+
+
+\title{Measuring Heterogeneity: Intergovernmental Organizations and Member States}
+\author{Jihyeon Bae, Curtis Atkisson}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+
+\end{abstract}
+
+\section{Introduction}
+Measuring summary statistics at the Intergovernmental Organization (IGO) level based on the characteristics of member states presents several methodological challenges. In this paper, we address some of these concerns by fitting the distribution of member-state features, specifically regime types, using the Beta distribution. This approach allows us to explicitly capture both the central tendency and the dispersion of regime types within an IGO, providing a more flexible and interpretable summary than simple averages alone.
+
+
+\subsection{Literature}
+
+With the growing influence of Intergovernmental Organizations (IGOs) in shaping global governance, scholars of International Relations have sought ways to conceptualize their key features. Existing literature has proposed valuable approaches to measure the average level of democracy among member states (), regime heterogeneity \parencite{bae_regime-type_2025}, and power asymmetry \parencite{allee_why_2016} each offering valuable building blocks in the study of global governance.
+
+In this paper, we introduce a generalizable framework for measuring the characteristics of IGO member states, specifically their mean and variance across key features. We also present the deliverables from our working example, estimated parameters of the Beta distribution (alpha and beta), along with the implied mean and standard deviation. These estimates offer a compact yet flexible summary of the distributional properties of member state features within an IGO. 
+
+While we showcase our process with an example of average democracy score of an IGO's member states, the method is not exclusive. 
+
+
+
+
+\section{Statistical Models}
+
+
+\section{Empirical Results and Model Performance}
+
+\section{Conclusion}
+
+
+\begin{appendices}
+
+
+\end{appendices}
+
+\printbibliography
+
+\end{document}
